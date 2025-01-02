@@ -37,8 +37,11 @@ Container                  Hide (or Show, depending on visibility)
 
                            Move to new container
 ------------------------------------------------------------------
-View                 Hide (or Show, depending on visibility)
+View                       Hide (or Show, depending on visibility)
                            Remove
+
+                           Copy screenshot
+                           Save screenshot…
 
                            Expand all
                            Collapse all
@@ -82,7 +85,8 @@ def log_some_views() -> None:
 
 
 def run(args: Namespace) -> None:
-    rr.script_setup(args, f"{os.path.basename(__file__)}", recording_id=uuid4(), default_blueprint=blueprint())
+    rr.script_setup(args, f"{os.path.basename(__file__)}", recording_id=uuid4())
+    rr.send_blueprint(blueprint(), make_active=True, make_default=True)
 
     log_readme()
     log_some_views()

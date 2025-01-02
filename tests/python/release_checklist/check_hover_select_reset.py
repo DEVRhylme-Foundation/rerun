@@ -11,9 +11,6 @@ README = """\
 
 This checks whether different UIs behave correctly with hover and selection.
 
-Known bugs:
-* TODO(#5138): Hovering over text document views does not highlight the corresponding entity in the blueprint tree.
-
 ### Hover
 For each of the views:
 * Hover the view and verify it shows up as highlighted in the blueprint tree.
@@ -28,6 +25,13 @@ For each of the views:
   * For 2D and 3D views the selected instance will not be visible in the blueprint tree.
     * If you think this is unexpected, create an issue.
     * Double-click the entity and verify that it becomes selected and highlighted in the blueprint tree.
+
+### Graph Select
+Should work just as 2D/3D views.
+
+### Text view
+Clicking on a text view (what you're reading right now) should select the view.
+Hovering the view should work as well.
 
 ### Reset
 For each of the views:
@@ -83,6 +87,14 @@ def log_points_2d() -> None:
     rr.log("2D/points", rr.Points2D(positions, colors=colors, radii=radii))
 
 
+def log_graph() -> None:
+    rr.log("graph", rr.GraphNodes(["a", "b"], labels=["A", "B"]))
+
+
+def log_map() -> None:
+    rr.log("points", rr.GeoPoints(lat_lon=[[47.6344, 19.1397], [47.6334, 19.1399]], radii=rr.Radius.ui_points(20.0)))
+
+
 def run(args: Namespace) -> None:
     rr.script_setup(args, f"{os.path.basename(__file__)}", recording_id=uuid4())
 
@@ -90,6 +102,10 @@ def run(args: Namespace) -> None:
     log_plots()
     log_points_3d()
     log_points_2d()
+    log_graph()
+    log_map()
+
+    rr.send_blueprint(rr.blueprint.Blueprint(auto_layout=True, auto_views=True), make_active=True, make_default=True)
 
 
 if __name__ == "__main__":

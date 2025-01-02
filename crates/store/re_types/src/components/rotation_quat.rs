@@ -22,6 +22,7 @@ use ::re_types_core::{DeserializationError, DeserializationResult};
 ///
 /// Note: although the x,y,z,w components of the quaternion will be passed through to the
 /// datastore as provided, when used in the Viewer, quaternions will always be normalized.
+/// If normalization fails the rotation is treated as an invalid transform.
 #[derive(Clone, Debug, Default, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(transparent)]
 pub struct RotationQuat(pub crate::datatypes::Quaternion);
@@ -103,7 +104,7 @@ impl std::ops::DerefMut for RotationQuat {
     }
 }
 
-impl ::re_types_core::SizeBytes for RotationQuat {
+impl ::re_byte_size::SizeBytes for RotationQuat {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         self.0.heap_size_bytes()

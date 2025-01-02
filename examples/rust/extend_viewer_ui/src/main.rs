@@ -1,7 +1,8 @@
 //! This example shows how to wrap the Rerun Viewer in your own GUI.
 
 use re_viewer::external::{
-    arrow2, eframe, egui, re_chunk_store, re_entity_db, re_log, re_log_types, re_memory, re_types,
+    arrow2, eframe, egui, re_byte_size, re_chunk_store, re_entity_db, re_log, re_log_types,
+    re_memory, re_types,
 };
 
 // By using `re_memory::AccountingAllocator` Rerun can keep track of exactly how much memory it is using,
@@ -12,6 +13,8 @@ static GLOBAL: re_memory::AccountingAllocator<mimalloc::MiMalloc> =
     re_memory::AccountingAllocator::new(mimalloc::MiMalloc);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let main_thread_token = re_viewer::MainThreadToken::i_promise_i_am_on_the_main_thread();
+
     // Direct calls using the `log` crate to stderr. Control with `RUST_LOG=debug` etc.
     re_log::setup_logging();
 
@@ -45,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             re_viewer::customize_eframe_and_setup_renderer(cc)?;
 
             let mut rerun_app = re_viewer::App::new(
+                main_thread_token,
                 re_viewer::build_info(),
                 &app_env,
                 startup_options,
@@ -160,7 +164,7 @@ fn component_ui(
             .cache()
             .latest_at(&query, entity_path, [component_name]);
 
-    if let Some(data) = results.component_batch_raw(&component_name) {
+    if let Some(data) = results.component_batch_raw_arrow2(&component_name) {
         egui::ScrollArea::vertical()
             .auto_shrink([false, true])
             .show(ui, |ui| {
@@ -168,14 +172,14 @@ fn component_ui(
 
                 let num_instances = data.len();
                 for i in 0..num_instances {
-                    ui.label(format_arrow(&*data.sliced(i, 1)));
+                    ui.label(format_arrow2(&*data.sliced(i, 1)));
                 }
             });
     };
 }
 
-fn format_arrow(value: &dyn arrow2::array::Array) -> String {
-    use re_types::SizeBytes as _;
+fn format_arrow2(value: &dyn arrow2::array::Array) -> String {
+    use re_byte_size::SizeBytes as _;
 
     let bytes = value.total_size_bytes();
     if bytes < 256 {

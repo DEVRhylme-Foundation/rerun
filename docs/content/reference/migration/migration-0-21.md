@@ -3,6 +3,9 @@ title: Migrating from 0.20 to 0.21
 order: 989
 ---
 
+### File compatibility
+We've changed how tensors are encoded in .rrd files, so tensors will no longer load from older .rrd files ([#8376](https://github.com/rerun-io/rerun/pull/8376)).
+
 ### Near clip plane for `Spatial2D` views now defaults to `0.1` in 3D scene units.
 
 Previously, the clip plane was set an arbitrary value that worked reasonably for
@@ -26,14 +29,15 @@ rr.send_blueprint(
 ```
 
 
-### Types and fields got renamed from `.*space_view.*`/`.*SpaceView.*` to `.*view.*`/`.*View.*`
+### Blueprint types and fields got renamed from `.*space_view.*`/`.*SpaceView.*` to `.*view.*`/`.*View.*`
 
 Various types and fields got changed to refer to "views" rather than "space views".
-This exclusively affects the Python blueprint sdk:
+This exclusively affects the Python blueprint sdk.
 
-#### Field/argument changes:
-* `ViewportBlueprint(...auto_views=...)` -> `ViewportBlueprint(...auto_views=...)`
-* `Blueprint(...auto_views=...)` -> `Blueprint(...auto_views=...)`
+#### Field/argument changes
+
+* `ViewportBlueprint(...auto_space_views=...)` -> `ViewportBlueprint(...auto_views=...)`
+* `Blueprint(...auto_space_views=...)` -> `Blueprint(...auto_views=...)`
 
 #### Type changes
 
@@ -65,3 +69,24 @@ Previously, the viewer would show 3 arrows for every logged transform if any of 
 For many usecases this led to too many arrows being shown by default.
 We therefore removed the last condition - arrows will no longer show by default if they're the only visualizer.
 The easiest way to opt-in to transform arrows is to set `AxisLength` (`axis_length` field on the `Transform3D` archetype) on your transforms.
+
+### `DisconnectedSpace` archetype/component deprecated
+
+The `DisconnectedSpace` archetype and `DisconnectedSpace` component have been deprecated.
+To achieve the same effect, you can log any of the following "invalid" transforms:
+* zeroed 3x3 matrix
+* zero scale
+* zeroed quaternion
+* zero axis on axis-angle rotation
+
+Previously, the `DisconnectedSpace` archetype played a double role by governing view spawn heuristics & being used as a transform placeholder.
+This led to a lot of complexity and often broke or caused confusion (see https://github.com/rerun-io/rerun/issues/6817, https://github.com/rerun-io/rerun/issues/4465, https://github.com/rerun-io/rerun/issues/4221).
+By now, explicit blueprints offer a better way to express which views should be spawned and what content they should query.
+(you can learn more about blueprints [here](https://rerun.io/docs/getting-started/configure-the-viewer/through-code-tutorial)).
+
+`DisconnectedSpace` will be removed in a future release.
+
+### `RotationAxisAngle` with zero rotation axis is no longer treated as identity
+
+Previously, `RotationAxisAngle` with a zero rotation axis was treated as identity.
+This is no longer the case, instead it makes the transform invalid in the same way a zeroed transformation matrix does.

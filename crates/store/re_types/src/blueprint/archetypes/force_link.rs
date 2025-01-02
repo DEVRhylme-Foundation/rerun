@@ -21,7 +21,9 @@ use ::re_types_core::{DeserializationError, DeserializationResult};
 /// **Archetype**: Aims to achieve a target distance between two nodes that are connected by an edge.
 #[derive(Clone, Debug)]
 pub struct ForceLink {
-    /// Whether the force is enabled.
+    /// Whether the link force is enabled.
+    ///
+    /// The link force aims to achieve a target distance between two nodes that are connected by one ore more edges.
     pub enabled: Option<crate::blueprint::components::Enabled>,
 
     /// The target distance between two nodes.
@@ -249,7 +251,9 @@ impl ForceLink {
         }
     }
 
-    /// Whether the force is enabled.
+    /// Whether the link force is enabled.
+    ///
+    /// The link force aims to achieve a target distance between two nodes that are connected by one ore more edges.
     #[inline]
     pub fn with_enabled(
         mut self,
@@ -282,7 +286,7 @@ impl ForceLink {
     }
 }
 
-impl ::re_types_core::SizeBytes for ForceLink {
+impl ::re_byte_size::SizeBytes for ForceLink {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         self.enabled.heap_size_bytes()

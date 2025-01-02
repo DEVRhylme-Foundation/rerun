@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{ArchetypeFieldName, ArchetypeName, ComponentName, SizeBytes};
+use crate::{ArchetypeFieldName, ArchetypeName, ComponentName};
 
 /// A [`ComponentDescriptor`] fully describes the semantics of a column of data.
 ///
@@ -117,7 +117,7 @@ impl ComponentDescriptor {
     }
 }
 
-impl SizeBytes for ComponentDescriptor {
+impl re_byte_size::SizeBytes for ComponentDescriptor {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         let Self {
@@ -140,6 +140,10 @@ impl ComponentDescriptor {
             archetype_field_name: None,
             component_name,
         }
+    }
+
+    pub fn untagged(self) -> Self {
+        Self::new(self.component_name)
     }
 
     /// Unconditionally sets [`Self::archetype_name`] to the given one.

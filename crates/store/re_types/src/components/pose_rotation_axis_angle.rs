@@ -19,6 +19,8 @@ use ::re_types_core::{ComponentDescriptor, ComponentName};
 use ::re_types_core::{DeserializationError, DeserializationResult};
 
 /// **Component**: 3D rotation represented by a rotation around a given axis that doesn't propagate in the transform hierarchy.
+///
+/// If normalization of the rotation axis fails the rotation is treated as an invalid transform.
 #[derive(Clone, Debug, Default, Copy, PartialEq)]
 #[repr(transparent)]
 pub struct PoseRotationAxisAngle(pub crate::datatypes::RotationAxisAngle);
@@ -92,7 +94,7 @@ impl std::ops::DerefMut for PoseRotationAxisAngle {
     }
 }
 
-impl ::re_types_core::SizeBytes for PoseRotationAxisAngle {
+impl ::re_byte_size::SizeBytes for PoseRotationAxisAngle {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         self.0.heap_size_bytes()

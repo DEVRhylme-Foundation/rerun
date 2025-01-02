@@ -1,4 +1,5 @@
 use ahash::HashMap;
+use arrow::array::ArrayRef;
 use parking_lot::RwLock;
 
 use re_chunk_store::LatestAtQuery;
@@ -8,8 +9,9 @@ use re_query::StorageEngineReadGuard;
 use crate::drag_and_drop::DragAndDropPayload;
 use crate::{
     query_context::DataQueryResult, AppOptions, ApplicableEntities, ApplicationSelectionState,
-    Caches, CommandSender, ComponentUiRegistry, IndicatedEntities, ItemCollection, PerVisualizer,
-    StoreContext, SystemCommandSender as _, TimeControl, ViewClassRegistry, ViewId,
+    Caches, CommandSender, ComponentUiRegistry, DragAndDropManager, IndicatedEntities,
+    ItemCollection, PerVisualizer, StoreContext, SystemCommandSender as _, TimeControl,
+    ViewClassRegistry, ViewId,
 };
 
 /// Common things needed by many parts of the viewer.
@@ -81,12 +83,8 @@ pub struct ViewerContext<'a> {
     /// that last several frames.
     pub focused_item: &'a Option<crate::Item>,
 
-    /// If a selection contains any `undraggable_items`, it may not be dragged.
-    ///
-    /// This is a rather ugly workaround to handle the case of the root container not being
-    /// draggable, but also being unknown to the drag-and-drop machinery in `re_viewer_context`.
-    //TODO(ab): figure out a way to deal with that in a cleaner way.
-    pub undraggable_items: &'a ItemCollection,
+    /// Helper object to manage drag-and-drop operations.
+    pub drag_and_drop_manager: &'a DragAndDropManager,
 }
 
 impl ViewerContext<'_> {
@@ -147,60 +145,74 @@ impl ViewerContext<'_> {
     /// are some guidelines:
     /// - Is there a meaningful destination for the dragged payload? For example, dragging stuff out
     ///   of a modal dialog is by definition meaningless.
-    /// - Even if a drag destination exists, would that be obvious for the user?
+    /// - Even if a drag destination exists, would that be obvious to the user?
     /// - Is it expected for that kind of UI element to be draggable? For example, buttons aren't
     ///   typically draggable.
+    ///
+    /// Drag vs. selection semantics:
+    ///
+    /// - When dragging an unselected item, that item only is dragged, and the selection is
+    ///   unchanged…
+    /// - …unless cmd/ctrl is held, in which case the item is added to the selection and the entire
+    ///   selection is dragged.
+    /// - When dragging a selected item, the entire selection is dragged as well.
     pub fn handle_select_hover_drag_interactions(
         &self,
         response: &egui::Response,
-        selection: impl Into<ItemCollection>,
+        interacted_items: impl Into<ItemCollection>,
         draggable: bool,
     ) {
         re_tracing::profile_function!();
 
-        let selection = selection.into().into_mono_instance_path_items(self);
+        let interacted_items = interacted_items.into().into_mono_instance_path_items(self);
         let selection_state = self.selection_state();
 
         if response.hovered() {
-            selection_state.set_hovered(selection.clone());
+            selection_state.set_hovered(interacted_items.clone());
         }
 
         if draggable && response.drag_started() {
             let mut selected_items = selection_state.selected_items().clone();
-            let is_already_selected = selection
+            let is_already_selected = interacted_items
                 .iter()
                 .all(|(item, _)| selected_items.contains_item(item));
-            if !is_already_selected {
-                if response.ctx.input(|i| i.modifiers.command) {
-                    selected_items.extend(selection);
-                } else {
-                    selected_items = selection;
-                }
+
+            let is_cmd_held = response.ctx.input(|i| i.modifiers.command);
+
+            // see semantics description in the docstring
+            let dragged_items = if !is_already_selected && is_cmd_held {
+                selected_items.extend(interacted_items);
                 selection_state.set_selection(selected_items.clone());
-            }
+                selected_items
+            } else if !is_already_selected {
+                interacted_items
+            } else {
+                selected_items
+            };
 
-            let selection_may_be_dragged = self
-                .undraggable_items
-                .iter_items()
-                .all(|item| !selected_items.contains_item(item));
+            let items_may_be_dragged = self
+                .drag_and_drop_manager
+                .are_items_draggable(&dragged_items);
 
-            let payload = if selection_may_be_dragged {
-                DragAndDropPayload::from_items(&selected_items)
+            let payload = if items_may_be_dragged {
+                DragAndDropPayload::from_items(&dragged_items)
             } else {
                 DragAndDropPayload::Invalid
             };
 
             egui::DragAndDrop::set_payload(&response.ctx, payload);
-        } else if response.double_clicked() {
-            if let Some(item) = selection.first_item() {
-                self.command_sender
-                    .send_system(crate::SystemCommand::SetFocus(item.clone()));
-            }
         } else if response.clicked() {
+            if response.double_clicked() {
+                if let Some(item) = interacted_items.first_item() {
+                    self.command_sender
+                        .send_system(crate::SystemCommand::SetFocus(item.clone()));
+                }
+            }
+
             if response.ctx.input(|i| i.modifiers.command) {
-                selection_state.toggle_selection(selection);
+                selection_state.toggle_selection(interacted_items);
             } else {
-                selection_state.set_selection(selection);
+                selection_state.set_selection(interacted_items);
             }
         }
     }
@@ -216,10 +228,7 @@ impl ViewerContext<'_> {
     /// The rationale is that to get into this situation, we need to know of a component name for which
     /// we don't have a datatype, meaning that we can't make any statement about what data this component should represent.
     // TODO(andreas): Are there cases where this is expected and how to handle this?
-    pub fn placeholder_for(
-        &self,
-        component: re_chunk::ComponentName,
-    ) -> Box<dyn re_chunk::Arrow2Array> {
+    pub fn placeholder_for(&self, component: re_chunk::ComponentName) -> ArrayRef {
         let datatype = if let Some(reflection) = self.reflection.components.get(&component) {
             // It's a builtin type with reflection. We either have custom place holder, or can rely on the known datatype.
             if let Some(placeholder) = reflection.custom_placeholder.as_ref() {
@@ -240,7 +249,7 @@ impl ViewerContext<'_> {
 
         // TODO(andreas): Is this operation common enough to cache the result? If so, here or in the reflection data?
         // The nice thing about this would be that we could always give out references (but updating said cache wouldn't be easy in that case).
-        re_types::reflection::generic_placeholder_for_datatype(&datatype)
+        re_types::reflection::generic_placeholder_for_datatype(&datatype).into()
     }
 }
 

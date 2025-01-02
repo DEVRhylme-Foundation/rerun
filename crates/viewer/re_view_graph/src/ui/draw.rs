@@ -35,6 +35,7 @@ impl DrawableLabel {
 }
 
 pub struct TextLabel {
+    color: Option<Color32>,
     frame: Frame,
     galley: Arc<Galley>,
 }
@@ -44,11 +45,27 @@ pub struct CircleLabel {
     color: Option<Color32>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum LevelOfDetail {
+    Full,
+    Low,
+}
+
+impl LevelOfDetail {
+    pub fn from_scaling(zoom: f32) -> Self {
+        if zoom < 0.20 {
+            Self::Low
+        } else {
+            Self::Full
+        }
+    }
+}
+
 impl DrawableLabel {
     pub fn size(&self) -> Vec2 {
         match self {
             Self::Circle(CircleLabel { radius, .. }) => Vec2::splat(radius * 2.0),
-            Self::Text(TextLabel { galley, frame }) => {
+            Self::Text(TextLabel { galley, frame, .. }) => {
                 frame.inner_margin.sum() + galley.size() + Vec2::splat(frame.stroke.width * 2.0)
             }
         }
@@ -82,7 +99,11 @@ impl DrawableLabel {
             .fill(ui.style().visuals.widgets.noninteractive.bg_fill)
             .stroke(Stroke::new(1.0, ui.style().visuals.text_color()));
 
-        Self::Text(TextLabel { frame, galley })
+        Self::Text(TextLabel {
+            frame,
+            galley,
+            color,
+        })
     }
 }
 
@@ -109,13 +130,20 @@ fn draw_circle_label(
             Color32::TRANSPARENT,
             Stroke::new(2.0, visuals.selection.stroke.color),
         );
+    } else if highlight.hover == HoverHighlight::Hovered {
+        painter.circle(
+            resp.rect.center(),
+            radius - 2.0,
+            Color32::TRANSPARENT,
+            Stroke::new(2.0, visuals.widgets.hovered.bg_fill),
+        );
     }
 
     resp
 }
 
 fn draw_text_label(ui: &mut Ui, label: &TextLabel, highlight: InteractionHighlight) -> Response {
-    let TextLabel { galley, frame } = label;
+    let TextLabel { galley, frame, .. } = label;
     let visuals = &ui.style().visuals;
 
     let bg = match highlight.hover {
@@ -137,12 +165,48 @@ fn draw_text_label(ui: &mut Ui, label: &TextLabel, highlight: InteractionHighlig
         .inner
 }
 
+/// Draw a rectangle to "fake" a label at small scales, where actual text would be unreadable anyways.
+fn draw_rect_label(ui: &mut Ui, label: &TextLabel, highlight: InteractionHighlight) -> Response {
+    let TextLabel {
+        galley,
+        frame,
+        color,
+    } = label;
+    let visuals = ui.visuals();
+
+    let bg = match highlight.hover {
+        HoverHighlight::None => visuals.widgets.noninteractive.bg_fill,
+        HoverHighlight::Hovered => visuals.widgets.hovered.bg_fill,
+    };
+
+    let stroke = match highlight.selection {
+        SelectionHighlight::Selection => visuals.selection.stroke,
+        _ => Stroke::new(1.0, visuals.text_color()),
+    };
+
+    // We use `gamma` to correct for the fact that text is not completely solid.
+    let fill_color = color
+        .unwrap_or_else(|| visuals.text_color())
+        .gamma_multiply(0.5);
+
+    frame
+        .stroke(stroke)
+        .fill(bg)
+        .show(ui, |ui| {
+            let (resp, painter) = ui.allocate_painter(galley.rect.size(), Sense::click());
+            painter.rect_filled(resp.rect, 0.0, fill_color);
+            resp
+        })
+        .inner
+}
+
 /// Draws a node at the given position.
 fn draw_node(
     ui: &mut Ui,
     center: Pos2,
     node: &DrawableLabel,
     highlight: InteractionHighlight,
+    lod: LevelOfDetail,
 ) -> Response {
     let builder = UiBuilder::new()
         .max_rect(Rect::from_center_size(center, node.size()))
@@ -152,32 +216,16 @@ fn draw_node(
 
     match node {
         DrawableLabel::Circle(label) => draw_circle_label(&mut node_ui, label, highlight),
-        DrawableLabel::Text(label) => draw_text_label(&mut node_ui, label, highlight),
+        DrawableLabel::Text(label) => {
+            if lod == LevelOfDetail::Full {
+                draw_text_label(&mut node_ui, label, highlight)
+            } else {
+                draw_rect_label(&mut node_ui, label, highlight)
+            }
+        }
     };
 
     node_ui.response()
-}
-
-/// Draws a bounding box, as well as a basic coordinate system.
-pub fn draw_debug(ui: &Ui, world_bounding_rect: Rect) {
-    let painter = ui.painter();
-
-    // Paint coordinate system at the world origin
-    let origin = Pos2::new(0.0, 0.0);
-    let x_axis = Pos2::new(100.0, 0.0);
-    let y_axis = Pos2::new(0.0, 100.0);
-
-    painter.line_segment([origin, x_axis], Stroke::new(1.0, Color32::RED));
-    painter.line_segment([origin, y_axis], Stroke::new(1.0, Color32::GREEN));
-
-    if world_bounding_rect.is_positive() {
-        painter.rect(
-            world_bounding_rect,
-            0.0,
-            Color32::from_rgba_unmultiplied(255, 0, 255, 8),
-            Stroke::new(1.0, Color32::from_rgb(255, 0, 255)),
-        );
-    }
 }
 
 /// Helper function to draw an arrow at the end of the edge
@@ -281,6 +329,8 @@ pub fn draw_graph(
     graph: &Graph,
     layout: &Layout,
     query: &ViewQuery<'_>,
+    lod: LevelOfDetail,
+    hover_click_item: &mut Option<(Item, Response)>,
 ) -> Rect {
     let entity_path = graph.entity();
     let entity_highlights = query.highlights.entity_highlight(entity_path.hash());
@@ -294,15 +344,10 @@ pub fn draw_graph(
         let response = match node {
             Node::Explicit { instance, .. } => {
                 let highlight = entity_highlights.index_highlight(instance.instance_index);
-                let mut response = draw_node(ui, center, node.label(), highlight);
+                let mut response = draw_node(ui, center, node.label(), highlight, lod);
 
                 let instance_path =
                     InstancePath::instance(entity_path.clone(), instance.instance_index);
-                ctx.handle_select_hover_drag_interactions(
-                    &response,
-                    Item::DataResult(query.view_id, instance_path.clone()),
-                    false,
-                );
 
                 response = response.on_hover_ui_at_pointer(|ui| {
                     list_item::list_item_scope(ui, "graph_node_hover", |ui| {
@@ -319,10 +364,24 @@ pub fn draw_graph(
                     });
                 });
 
+                // Warning! The order is very important here.
+                if response.double_clicked() {
+                    // Select the entire entity
+                    ctx.selection_state().set_selection(Item::DataResult(
+                        query.view_id,
+                        instance_path.entity_path.clone().into(),
+                    ));
+                } else if response.hovered() || response.clicked() {
+                    *hover_click_item = Some((
+                        Item::DataResult(query.view_id, instance_path.clone()),
+                        response.clone(),
+                    ));
+                }
+
                 response
             }
             Node::Implicit { graph_node, .. } => {
-                draw_node(ui, center, node.label(), Default::default()).on_hover_text(format!(
+                draw_node(ui, center, node.label(), Default::default(), lod).on_hover_text(format!(
                     "Implicit node {} created via a reference in a GraphEdge component",
                     graph_node.as_str(),
                 ))

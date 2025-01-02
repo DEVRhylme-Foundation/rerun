@@ -15,7 +15,7 @@ pub struct DesignTokens {
     /// Color table for all colors used in the UI.
     ///
     /// Loaded at startup from `design_tokens.json`.
-    color_table: ColorTable,
+    pub color_table: ColorTable,
 
     // TODO(ab): get rid of these, they should be function calls like the rest.
     pub top_bar_color: egui::Color32,
@@ -429,6 +429,21 @@ impl DesignTokens {
     /// Used by the "add view or container" modal.
     pub fn thumbnail_background_color(&self) -> egui::Color32 {
         self.color(ColorToken::gray(S250))
+    }
+
+    /// Stroke used to indicate that a UI element is a container that will receive a drag-and-drop
+    /// payload.
+    ///
+    /// Sometimes this is the UI element that is being dragged over (e.g., a view receiving a new
+    /// entity). Sometimes this is a UI element not under the pointer, but whose content is
+    /// being hovered (e.g., a container in the blueprint tree)
+    #[inline]
+    pub fn drop_target_container_stroke(&self) -> egui::Stroke {
+        egui::Stroke::new(2.0, self.color(ColorToken::blue(S350)))
+    }
+
+    pub fn text(&self, text: impl Into<String>, token: ColorToken) -> egui::RichText {
+        egui::RichText::new(text).color(self.color(token))
     }
 }
 

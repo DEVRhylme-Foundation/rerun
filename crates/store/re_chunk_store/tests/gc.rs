@@ -37,7 +37,7 @@ fn query_latest_array(
         })
         .max_by_key(|(index, _chunk)| *index)?;
 
-    unit.component_batch_raw(&component_name)
+    unit.component_batch_raw_arrow2(&component_name)
         .map(|array| (data_time, row_id, array))
 }
 
@@ -386,6 +386,8 @@ fn protected_time_ranges() -> anyhow::Result<()> {
             ..GarbageCollectionOptions::gc_everything()
         }
     }
+
+    eprintln!("{store}");
 
     let (events, _) = store.gc(&protect_time_range(ResolvedTimeRange::new(1, 4)));
     assert_eq!(events.len(), 0);

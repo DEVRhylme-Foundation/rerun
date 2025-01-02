@@ -3,11 +3,12 @@ use std::sync::Arc;
 use re_chunk_store::LatestAtQuery;
 use re_entity_db::EntityDb;
 use re_log_types::{StoreId, StoreKind};
+use re_types_core::reflection::Reflection;
 
 use crate::{
     blueprint_timeline, command_channel, ApplicationSelectionState, CommandReceiver, CommandSender,
-    ComponentUiRegistry, RecordingConfig, StoreContext, SystemCommand, ViewClassRegistry,
-    ViewerContext,
+    ComponentUiRegistry, ItemCollection, RecordingConfig, StoreContext, SystemCommand,
+    ViewClassRegistry, ViewerContext,
 };
 
 /// Harness to execute code that rely on [`crate::ViewerContext`].
@@ -30,7 +31,8 @@ pub struct TestContext {
     pub recording_config: RecordingConfig,
 
     pub blueprint_query: LatestAtQuery,
-    component_ui_registry: ComponentUiRegistry,
+    pub component_ui_registry: ComponentUiRegistry,
+    pub reflection: Reflection,
 
     command_sender: CommandSender,
     command_receiver: CommandReceiver,
@@ -51,6 +53,9 @@ impl Default for TestContext {
             |_ctx, _ui, _ui_layout, _query, _db, _entity_path, _row_id, _component| {},
         ));
 
+        let reflection =
+            re_types::reflection::generate_reflection().expect("Failed to generate reflection");
+
         Self {
             recording_store,
             blueprint_store,
@@ -59,6 +64,7 @@ impl Default for TestContext {
             recording_config,
             blueprint_query,
             component_ui_registry,
+            reflection,
             command_sender,
             command_receiver,
         }
@@ -90,12 +96,12 @@ impl TestContext {
             hub: &Default::default(),
         };
 
-        let undraggable_items = Default::default();
+        let drag_and_drop_manager = crate::DragAndDropManager::new(ItemCollection::default());
 
         let ctx = ViewerContext {
             app_options: &Default::default(),
             cache: &Default::default(),
-            reflection: &Default::default(),
+            reflection: &self.reflection,
             component_ui_registry: &self.component_ui_registry,
             view_class_registry: &self.view_class_registry,
             store_context: &store_context,
@@ -110,7 +116,7 @@ impl TestContext {
             render_ctx: None,
             command_sender: &self.command_sender,
             focused_item: &None,
-            undraggable_items: &undraggable_items,
+            drag_and_drop_manager: &drag_and_drop_manager,
         };
 
         func(&ctx);

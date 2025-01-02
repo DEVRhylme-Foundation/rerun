@@ -10,16 +10,17 @@ pub mod icons;
 pub mod list_item;
 mod markdown_utils;
 pub mod modal;
+pub mod notifications;
 mod section_collapsing_header;
 pub mod syntax_highlighting;
-pub mod toasts;
 mod ui_ext;
 pub mod zoom_pan_area;
 
+use egui::Color32;
 use egui::NumExt as _;
 
 pub use self::{
-    color_table::{ColorToken, Hue, Scale},
+    color_table::{ColorTable, ColorToken, Hue, Scale},
     command::{UICommand, UICommandSender},
     command_palette::CommandPalette,
     context_ext::ContextExt,
@@ -45,6 +46,9 @@ pub const CUSTOM_WINDOW_DECORATIONS: bool = false; // !FULLSIZE_CONTENT; // TODO
 /// If true, we show the native window decorations/chrome with the
 /// close/maximize/minimize buttons and app title.
 pub const NATIVE_WINDOW_BAR: bool = !FULLSIZE_CONTENT && !CUSTOM_WINDOW_DECORATIONS;
+
+pub const INFO_COLOR: Color32 = Color32::from_rgb(0, 155, 255);
+pub const SUCCESS_COLOR: Color32 = Color32::from_rgb(0, 240, 32);
 
 // ----------------------------------------------------------------------------
 

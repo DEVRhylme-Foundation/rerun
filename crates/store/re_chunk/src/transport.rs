@@ -9,11 +9,12 @@ use arrow2::{
         Schema as Arrow2Schema, TimeUnit as ArrowTimeUnit,
     },
 };
-
 use itertools::Itertools;
 use nohash_hasher::IntMap;
+
+use re_byte_size::SizeBytes as _;
 use re_log_types::{EntityPath, Timeline};
-use re_types_core::{Component as _, ComponentDescriptor, Loggable as _, SizeBytes};
+use re_types_core::{Component as _, ComponentDescriptor, Loggable as _};
 
 use crate::{chunk::ChunkComponents, Chunk, ChunkError, ChunkId, ChunkResult, RowId, TimeColumn};
 
@@ -650,9 +651,7 @@ impl Chunk {
                 let component_desc = TransportChunk::component_descriptor_from_field(field);
 
                 if components
-                    .entry(component_desc.component_name)
-                    .or_default()
-                    .insert(component_desc, column.clone() /* refcount */)
+                    .insert_descriptor(component_desc, column.clone())
                     .is_some()
                 {
                     return Err(ChunkError::Malformed {

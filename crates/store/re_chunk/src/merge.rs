@@ -171,10 +171,7 @@ impl Chunk {
         let components = {
             let mut per_name = ChunkComponents::default();
             for (component_desc, list_array) in components {
-                per_name
-                    .entry(component_desc.component_name)
-                    .or_default()
-                    .insert(component_desc.clone(), list_array);
+                per_name.insert_descriptor(component_desc.clone(), list_array);
             }
             per_name
         };
@@ -807,7 +804,7 @@ mod tests {
                 <MyPoint64 as re_types_core::LoggableBatch>::to_arrow2(&MyPoint64::new(1.0, 1.0))?;
 
             let chunk1 = Chunk::builder(entity_path.into())
-                .with_row(
+                .with_row_arrow2(
                     row_id1,
                     timepoint1,
                     [
@@ -817,7 +814,7 @@ mod tests {
                 .build()?;
 
             let chunk2 = Chunk::builder(entity_path.into())
-                .with_row(
+                .with_row_arrow2(
                     row_id2,
                     timepoint2,
                     [

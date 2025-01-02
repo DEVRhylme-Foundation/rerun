@@ -17,7 +17,7 @@ For each of the multi-selection below, check the context menu content as per the
 ==========================================================
 ITEMS                               CONTEXT MENU CONTENT
 ==========================================================
-2x Views                      Hide all
+2x Views                            Hide all
                                     Remove
 
                                     Expand all
@@ -38,7 +38,7 @@ ITEMS                               CONTEXT MENU CONTENT
                                     Expand all
                                     Collapse all
 ==========================================================
-View + 'box2d' data result    Hide all
+View + 'box2d' data result          Hide all
                                     Remove
 
                                     Expand all
@@ -83,7 +83,8 @@ def log_some_views() -> None:
 
 
 def run(args: Namespace) -> None:
-    rr.script_setup(args, f"{os.path.basename(__file__)}", recording_id=uuid4(), default_blueprint=blueprint())
+    rr.script_setup(args, f"{os.path.basename(__file__)}", recording_id=uuid4())
+    rr.send_blueprint(blueprint(), make_active=True, make_default=True)
 
     log_readme()
     log_some_views()

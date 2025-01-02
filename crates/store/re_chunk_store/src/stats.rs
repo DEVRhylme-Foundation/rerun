@@ -1,7 +1,7 @@
 use std::sync::{atomic::Ordering, Arc};
 
+use re_byte_size::SizeBytes;
 use re_chunk::{Chunk, ComponentName, EntityPath, Timeline};
-use re_types_core::SizeBytes;
 
 use crate::ChunkStore;
 
@@ -319,5 +319,25 @@ impl ChunkStore {
                     .filter_map(|chunk| chunk.num_events_for_component(component_name))
                     .sum()
             })
+    }
+
+    /// Returns the number of temporal events logged for an entity for a specific component on all timelines.
+    ///
+    /// This ignores static events.
+    pub fn num_temporal_events_for_component_on_all_timelines(
+        &self,
+        entity_path: &EntityPath,
+        component_name: ComponentName,
+    ) -> u64 {
+        self.all_timelines()
+            .iter()
+            .map(|timeline| {
+                self.num_temporal_events_for_component_on_timeline(
+                    timeline,
+                    entity_path,
+                    component_name,
+                )
+            })
+            .sum()
     }
 }

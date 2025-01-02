@@ -24,8 +24,8 @@ pub struct RotationAxisAngle {
     /// Axis to rotate around.
     ///
     /// This is not required to be normalized.
-    /// If normalization fails (typically because the vector is length zero), the rotation is silently
-    /// ignored.
+    /// However, if normalization of the rotation axis fails (typically due to a zero vector)
+    /// the rotation is treated as an invalid transform.
     pub axis: crate::datatypes::Vec3D,
 
     /// How much to rotate around the axis.
@@ -302,7 +302,7 @@ impl ::re_types_core::Loggable for RotationAxisAngle {
     }
 }
 
-impl ::re_types_core::SizeBytes for RotationAxisAngle {
+impl ::re_byte_size::SizeBytes for RotationAxisAngle {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         self.axis.heap_size_bytes() + self.angle.heap_size_bytes()

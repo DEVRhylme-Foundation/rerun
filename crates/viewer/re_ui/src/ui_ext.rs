@@ -7,8 +7,7 @@ use egui::{
 use crate::{
     design_tokens, icons,
     list_item::{self, LabelContent, ListItem},
-    toasts::SUCCESS_COLOR,
-    DesignTokens, Icon, LabelStyle,
+    DesignTokens, Icon, LabelStyle, SUCCESS_COLOR,
 };
 
 static FULL_SPAN_TAG: &str = "rerun_full_span";
@@ -1094,7 +1093,11 @@ pub trait UiExt {
                 return *span;
             }
 
-            if node.has_visible_frame() || node.is_area_ui() || node.is_root_ui() {
+            if node.has_visible_frame()
+                || node.is_area_ui()
+                || node.is_panel_ui()
+                || node.is_root_ui()
+            {
                 return (node.max_rect + node.frame().inner_margin).x_range();
             }
         }

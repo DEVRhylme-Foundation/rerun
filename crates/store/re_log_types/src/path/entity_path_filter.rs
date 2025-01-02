@@ -16,8 +16,11 @@ pub enum EntityPathFilterParseError {
 }
 
 /// A set of substitutions for entity paths.
+///
+/// Important: the same substitutions must be used in every place we parse entity path filters.
+// TODO(ab): the above requirement is a foot-gun we already fell in and should be addressed.
 #[derive(Default)]
-pub struct EntityPathSubs(pub HashMap<String, String>);
+pub struct EntityPathSubs(HashMap<String, String>);
 
 impl EntityPathSubs {
     /// Create a new set of substitutions from a single origin.
@@ -583,6 +586,12 @@ impl EntityPathFilter {
         // If we got here, we checked every inclusion rule in `other` and they all had a more-inclusive
         // inclusion rule and didn't hit an exclusion rule.
         true
+    }
+
+    #[inline]
+    /// Iterate over all rules in the filter.
+    pub fn rules(&self) -> impl Iterator<Item = (&EntityPathRule, &RuleEffect)> {
+        self.rules.iter()
     }
 }
 

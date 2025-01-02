@@ -137,7 +137,7 @@ fn generate_component_reflection(
                         || contents.contains(&format!("impl Default for super::{}", &obj.name))
                 });
         let custom_placeholder = if auto_derive_default || has_custom_default_impl {
-            quote! { Some(#type_name::default().to_arrow2()?) }
+            quote! { Some(#type_name::default().to_arrow()?) }
         } else {
             quote! { None }
         };
@@ -156,6 +156,7 @@ fn generate_component_reflection(
         #[doc = "Generates reflection about all known components."]
         #[doc = ""]
         #[doc = "Call only once and reuse the results."]
+        #[allow(deprecated)]
         fn generate_component_reflection() -> Result<ComponentReflectionMap, SerializationError> {
             re_tracing::profile_function!();
             let array = [

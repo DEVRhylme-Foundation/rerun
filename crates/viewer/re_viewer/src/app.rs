@@ -3,12 +3,13 @@ use std::sync::Arc;
 use itertools::Itertools as _;
 
 use re_build_info::CrateVersion;
+use re_capabilities::MainThreadToken;
 use re_data_source::{DataSource, FileContents};
 use re_entity_db::entity_db::EntityDb;
 use re_log_types::{ApplicationId, FileSource, LogMsg, StoreKind};
 use re_renderer::WgpuResourcePoolStatistics;
 use re_smart_channel::{ReceiveSet, SmartChannelSource};
-use re_ui::{toasts, DesignTokens, UICommand, UICommandSender};
+use re_ui::{notifications, DesignTokens, UICommand, UICommandSender};
 use re_viewer_context::{
     command_channel,
     store_hub::{BlueprintPersistence, StoreHub, StoreHubStats},
@@ -158,6 +159,8 @@ struct PendingFilePromise {
 
 /// The Rerun Viewer as an [`eframe`] application.
 pub struct App {
+    #[allow(dead_code)] // Unused on wasm32
+    main_thread_token: MainThreadToken,
     build_info: re_build_info::BuildInfo,
     startup_options: StartupOptions,
     start_time: web_time::Instant,
@@ -190,8 +193,8 @@ pub struct App {
     /// Interface for all recordings and blueprints
     pub(crate) store_hub: Option<StoreHub>,
 
-    /// Toast notifications.
-    toasts: toasts::Toasts,
+    /// Notification panel.
+    pub(crate) notifications: notifications::NotificationUi,
 
     memory_panel: crate::memory_panel::MemoryPanel,
     memory_panel_open: bool,
@@ -222,6 +225,7 @@ pub struct App {
 impl App {
     /// Create a viewer that receives new log messages over time
     pub fn new(
+        main_thread_token: MainThreadToken,
         build_info: re_build_info::BuildInfo,
         app_env: &crate::AppEnvironment,
         startup_options: StartupOptions,
@@ -304,6 +308,7 @@ impl App {
         });
 
         Self {
+            main_thread_token,
             build_info,
             startup_options,
             start_time: web_time::Instant::now(),
@@ -328,7 +333,8 @@ impl App {
                 blueprint_loader(),
                 &crate::app_blueprint::setup_welcome_screen_blueprint,
             )),
-            toasts: toasts::Toasts::new(),
+            notifications: notifications::NotificationUi::new(),
+
             memory_panel: Default::default(),
             memory_panel_open: false,
 
@@ -645,7 +651,7 @@ impl App {
 
             #[cfg(not(target_arch = "wasm32"))]
             UICommand::Open => {
-                for file_path in open_file_dialog_native() {
+                for file_path in open_file_dialog_native(self.main_thread_token) {
                     self.command_sender
                         .send_system(SystemCommand::LoadDataSource(DataSource::FilePath(
                             FileSource::FileDialog {
@@ -677,7 +683,7 @@ impl App {
 
             #[cfg(not(target_arch = "wasm32"))]
             UICommand::Import => {
-                for file_path in open_file_dialog_native() {
+                for file_path in open_file_dialog_native(self.main_thread_token) {
                     self.command_sender
                         .send_system(SystemCommand::LoadDataSource(DataSource::FilePath(
                             FileSource::FileDialog {
@@ -970,11 +976,8 @@ impl App {
 
         self.egui_ctx
             .output_mut(|o| o.copied_text = direct_link.clone());
-        self.toasts.add(toasts::Toast {
-            kind: toasts::ToastKind::Success,
-            text: format!("Copied {direct_link:?} to clipboard"),
-            options: toasts::ToastOptions::with_ttl_in_seconds(4.0),
-        });
+        self.notifications
+            .success(format!("Copied {direct_link:?} to clipboard"));
     }
 
     fn memory_panel_ui(
@@ -1112,6 +1115,8 @@ impl App {
                         render_ctx.before_submit();
                     }
                 }
+
+                self.show_text_logs_as_notifications();
             });
     }
 
@@ -1119,26 +1124,8 @@ impl App {
     fn show_text_logs_as_notifications(&mut self) {
         re_tracing::profile_function!();
 
-        while let Ok(re_log::LogMsg { level, target, msg }) = self.text_log_rx.try_recv() {
-            let is_rerun_crate = target.starts_with("rerun") || target.starts_with("re_");
-            if !is_rerun_crate {
-                continue;
-            }
-
-            let kind = match level {
-                re_log::Level::Error => toasts::ToastKind::Error,
-                re_log::Level::Warn => toasts::ToastKind::Warning,
-                re_log::Level::Info => toasts::ToastKind::Info,
-                re_log::Level::Debug | re_log::Level::Trace => {
-                    continue; // too spammy
-                }
-            };
-
-            self.toasts.add(toasts::Toast {
-                kind,
-                text: msg,
-                options: toasts::ToastOptions::with_ttl_in_seconds(4.0),
-            });
+        while let Ok(message) = self.text_log_rx.try_recv() {
+            self.notifications.add_log(message);
         }
     }
 
@@ -1596,7 +1583,7 @@ impl App {
         false
     }
 
-    #[cfg(not(target_arch = "wasm32"))] // TODO(#8264): screenshotting on web
+    #[allow(clippy::needless_pass_by_ref_mut)] // False positive on wasm
     fn process_screenshot_result(
         &mut self,
         image: &Arc<egui::ColorImage>,
@@ -1623,8 +1610,8 @@ impl App {
             };
 
             match target {
+                #[cfg(not(target_arch = "wasm32"))] // TODO(#8264): copy-to-screenshot on web
                 re_viewer_context::ScreenshotTarget::CopyToClipboard => {
-                    #[cfg(not(target_arch = "wasm32"))] // TODO(#8264): screenshotting on web
                     re_viewer_context::Clipboard::with(|clipboard| {
                         clipboard.set_image(
                             [rgba.width(), rgba.height()],
@@ -1648,6 +1635,7 @@ impl App {
                     } else {
                         let file_name = format!("{name}.png");
                         self.command_sender.save_file_dialog(
+                            self.main_thread_token,
                             &file_name,
                             "Save screenshot".to_owned(),
                             png_bytes,
@@ -1656,6 +1644,7 @@ impl App {
                 }
             }
         } else {
+            #[cfg(not(target_arch = "wasm32"))] // no full-app screenshotting on web
             self.screenshotter.save(image);
         }
     }
@@ -1683,11 +1672,7 @@ fn blueprint_loader() -> BlueprintPersistence {
 
         re_log::debug!("Trying to load blueprint for {app_id} from {blueprint_path:?}");
 
-        let with_notifications = false;
-
-        if let Some(bundle) =
-            crate::loading::load_blueprint_file(&blueprint_path, with_notifications)
-        {
+        if let Some(bundle) = crate::loading::load_blueprint_file(&blueprint_path) {
             for store in bundle.entity_dbs() {
                 if store.store_kind() == StoreKind::Blueprint
                     && !crate::blueprint::is_valid_blueprint(store)
@@ -1871,7 +1856,6 @@ impl eframe::App for App {
             store_hub.begin_frame(renderer_active_frame_idx);
         }
 
-        self.show_text_logs_as_notifications();
         self.receive_messages(&mut store_hub, egui_ctx);
 
         if self.app_options().blueprint_gc {
@@ -1932,10 +1916,6 @@ impl eframe::App for App {
                 paint_native_window_frame(egui_ctx);
             }
 
-            if !self.screenshotter.is_screenshotting() {
-                self.toasts.show(egui_ctx);
-            }
-
             if let Some(cmd) = self.cmd_palette.show(egui_ctx) {
                 self.command_sender.send_ui(cmd);
             }
@@ -1951,7 +1931,6 @@ impl eframe::App for App {
         self.store_hub = Some(store_hub);
 
         // Check for returned screenshot:
-        #[cfg(not(target_arch = "wasm32"))] // TODO(#8264): screenshotting on web
         egui_ctx.input(|i| {
             for event in &i.raw.events {
                 if let egui::Event::Screenshot {
@@ -2092,8 +2071,9 @@ fn file_saver_progress_ui(egui_ctx: &egui::Context, background_tasks: &mut Backg
     }
 }
 
+/// [This may only be called on the main thread](https://docs.rs/rfd/latest/rfd/#macos-non-windowed-applications-async-and-threading).
 #[cfg(not(target_arch = "wasm32"))]
-fn open_file_dialog_native() -> Vec<std::path::PathBuf> {
+fn open_file_dialog_native(_: crate::MainThreadToken) -> Vec<std::path::PathBuf> {
     re_tracing::profile_function!();
 
     let supported: Vec<_> = if re_data_loader::iter_external_loaders().len() == 0 {

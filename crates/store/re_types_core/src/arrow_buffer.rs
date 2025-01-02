@@ -1,4 +1,5 @@
 use arrow::datatypes::ArrowNativeType;
+use re_byte_size::SizeBytes;
 
 /// Convenience-wrapper around an [`arrow::buffer::ScalarBuffer`] that is known to contain a
 /// a primitive type.
@@ -17,7 +18,7 @@ impl<T: ArrowNativeType> Default for ArrowBuffer<T> {
     }
 }
 
-impl<T: crate::SizeBytes + ArrowNativeType> crate::SizeBytes for ArrowBuffer<T> {
+impl<T: SizeBytes + ArrowNativeType> SizeBytes for ArrowBuffer<T> {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         std::mem::size_of_val(self.as_slice()) as _
@@ -130,6 +131,16 @@ impl<T: ArrowNativeType> From<&[T]> for ArrowBuffer<T> {
 impl<T: ArrowNativeType> FromIterator<T> for ArrowBuffer<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self(arrow::buffer::ScalarBuffer::from_iter(iter))
+    }
+}
+
+impl<'a, T: ArrowNativeType> IntoIterator for &'a ArrowBuffer<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_slice().iter()
     }
 }
 
